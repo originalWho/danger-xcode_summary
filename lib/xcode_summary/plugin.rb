@@ -20,8 +20,21 @@ module Danger
   # @tags xcode, xcodebuild, format
   #
   class DangerXcodeSummary < Plugin
+
+    class ResultType
+      WARNING =                 1 << 0
+      LD_WARNING =              1 << 1
+      COMPILE_WARNING =         1 << 2
+      ERROR =                   1 << 3
+      COMPILE_ERROR =           1 << 4
+      FILE_MISSING_ERROR =      1 << 5
+      UNDEFINED_SYMBOLS_ERROR = 1 << 6
+      DUPLICATE_SYMBOLS_ERROR = 1 << 7
+      TEST_FAILURE =            1 << 8
+    end
+
     Location = Struct.new(:file_name, :file_path, :line)
-    Result = Struct.new(:message, :location)
+    Result = Struct.new(:message, :location, :type)
 
     # The project root, which will be used to make the paths relative.
     # Defaults to `pwd`.
@@ -172,10 +185,10 @@ module Danger
       end
 
       warnings = [
-        xcode_summary.fetch(:warnings, []).map { |message| Result.new(message, nil) },
-        xcode_summary.fetch(:ld_warnings, []).map { |message| Result.new(message, nil) },
+        xcode_summary.fetch(:warnings, []).map { |message| Result.new(message, nil, ResultType::WARNING) },
+        xcode_summary.fetch(:ld_warnings, []).map { |message| Result.new(message, nil, ResultType::LD_WARNING) },
         xcode_summary.fetch(:compile_warnings, {}).map do |h|
-          Result.new(format_compile_warning(h), parse_location(h))
+          Result.new(format_compile_warning(h), parse_location(h), ResultType::COMPILE_WARNING)
         end
       ].flatten.uniq.compact.reject { |result| result.message.nil? }
       warnings.delete_if(&ignored_results)
@@ -183,22 +196,22 @@ module Danger
 
     def errors(xcode_summary)
       errors = [
-        xcode_summary.fetch(:errors, []).map { |message| Result.new(message, nil) },
+        xcode_summary.fetch(:errors, []).map { |message| Result.new(message, nil, ResultType::ERROR) },
         xcode_summary.fetch(:compile_errors, {}).map do |h|
-          Result.new(format_compile_warning(h), parse_location(h))
+          Result.new(format_compile_warning(h), parse_location(h), ResultType::COMPILE_ERROR)
         end,
         xcode_summary.fetch(:file_missing_errors, {}).map do |h|
-          Result.new(format_format_file_missing_error(h), parse_location(h))
+          Result.new(format_format_file_missing_error(h), parse_location(h), ResultType::FILE_MISSING_ERROR)
         end,
         xcode_summary.fetch(:undefined_symbols_errors, {}).map do |h|
-          Result.new(format_undefined_symbols(h), nil)
+          Result.new(format_undefined_symbols(h), nil, ResultType::UNDEFINED_SYMBOLS_ERROR)
         end,
         xcode_summary.fetch(:duplicate_symbols_errors, {}).map do |h|
-          Result.new(format_duplicate_symbols(h), nil)
+          Result.new(format_duplicate_symbols(h), nil, ResultType::DUPLICATE_SYMBOLS_ERROR)
         end,
         xcode_summary.fetch(:tests_failures, {}).map do |test_suite, failures|
           failures.map do |failure|
-            Result.new(format_test_failure(test_suite, failure), parse_test_location(failure))
+            Result.new(format_test_failure(test_suite, failure), parse_test_location(failure), ResultType::TEST_FAILURE)
           end
         end
       ].flatten.uniq.compact.reject { |result| result.message.nil? }
